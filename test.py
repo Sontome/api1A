@@ -2,7 +2,8 @@ import requests
 from bs4 import BeautifulSoup
 import json
 import os
-
+USERNAME = "SEL28AA8"
+PASSWORD = "Bkdfasdv@203414"
 def save_request_response(name, req, resp, cookies):
     os.makedirs("debug", exist_ok=True)
 
@@ -110,5 +111,64 @@ headers4 = {
 resp4 = session.get(url4, headers=headers4)
 
 save_request_response("step4", resp4.request, resp4, session.cookies.get_dict())
+
+print("[*] Done, đã lưu request/response + cookies vào thư mục debug/")
+# ----------------- STEP 5 -----------------
+
+url5 = "https://www.accounts.amadeus.com/LoginService/services/rs/auth2.0/identify?service=ARD_VN_DC"
+
+headers5 = {
+    "accept": "application/json, text/plain, */*",
+    "accept-language": "vi-VN,vi;q=0.9",
+    "lid": lid_value,
+    "referer": url1,
+    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"
+}
+payload = {
+    "officeId":"",
+    "userAlias":USERNAME,
+    "userId":"",
+    "email":"",
+    "organization":"",
+    "agentSign":"",
+    "dutyCode":"",
+    "authMode":"HOS",
+    "language":"en_GB",
+    "shouldSelectOffice":"false"
+}
+resp5 = session.post(url5, headers=headers5,json= payload)
+
+save_request_response("step5", resp5.request, resp5, session.cookies.get_dict())
+
+print("[*] Done, đã lưu request/response + cookies vào thư mục debug/")
+# ----------------- STEP 6 -----------------
+
+url6 = "https://www.accounts.amadeus.com/LoginService/services/rs/auth2.0/authenticate?service=ARD_VN_DC"
+with open("debug/step5.cookies.json", "r", encoding="utf-8") as f:
+    cookies = json.load(f)
+
+token = cookies.get("accessToken_ARD_VN_DC")
+print(token)
+headers6 = {
+    "accept": "application/json, text/plain, */*",
+    "accept-language": "vi-VN,vi;q=0.9",
+    "lid": lid_value,
+    "referer": url1,
+    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"
+}
+payload = {
+           "accessToken":token,
+           "authMode":"HOS",
+           "authenticationFactors":{
+               "password":PASSWORD
+               },
+           "officeId":"",
+           "organization":"",
+           "forceSignIn":"false",
+           "redirectUri":"null",
+           "language":"de_DE"}
+resp6 = session.post(url6, headers=headers6,json= payload)
+
+save_request_response("step6", resp6.request, resp6, session.cookies.get_dict())
 
 print("[*] Done, đã lưu request/response + cookies vào thư mục debug/")
