@@ -1,16 +1,42 @@
 from playwright.sync_api import sync_playwright
 import re
 import json
+import xml.etree.ElementTree as ET
 
 USERNAME = "SEL28AA8"
 PASSWORD = "Bkdfasdv@203414"
+def getIDvsENC(xml_data):
+    
+    try:
+        root = ET.fromstring(xml_data)
+        # Lấy CDATA trong <framework>
+        framework_json_str = root.find("framework").text.strip()
+        framework_data = json.loads(framework_json_str)
+        session_id = framework_data["session"]["id"]
 
+        # Lấy CDATA trong <data>
+        data_json_str = root.find("data").text.strip()
+        data_data = json.loads(data_json_str)
+        encryption_key = data_data["model"]["output"]["encryptionKey"]
+
+        print("ID:", session_id)
+        print("EncryptionKey:", encryption_key)
+        return({
+            "ID": session_id,
+            "EncryptionKey" :encryption_key
+        })
+    except:
+        return({
+            "ID": None,
+            "EncryptionKey" :None
+        })
 def extract_jsessionid(url):
     match = re.search(r';jsessionid=([^?]+)', url, re.IGNORECASE)
     return match.group(1) if match else None
 
 found_session = False
-
+def keepalive():
+    pass
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=False)
     page = browser.new_page()
@@ -39,15 +65,13 @@ with sync_playwright() as p:
 {"="*80}
 """
             print(log_data)
-
+            jsession = getIDvsENC(body)
+            print(jsession)
             # Ghi log vào file
-            with open("session_log.txt", "a", encoding="utf-8") as f:
-                f.write(log_data)
-
-            # Lưu jsessionid
-            with open("jsessionid.txt", "w", encoding="utf-8") as f:
-                f.write(jsid)
-            print("[*] JSESSIONID saved to jsessionid.txt")
+            with open("session_log.json", "w", encoding="utf-8") as f:
+                json.dump(jsession, f, indent=2, ensure_ascii=False)
+            
+            
 
             # Lưu cookies
             cookies = page.context.cookies()
@@ -81,4 +105,6 @@ with sync_playwright() as p:
         pass
 
     print("[*] Đang chờ request có jsessionid... Nhấn Ctrl+C để thoát")
-    page.wait_for_timeout(60000)  # chờ max 60s nhưng không đóng browser
+    
+    
+    page.wait_for_timeout(60000000)  # chờ max 60s nhưng không đóng browser

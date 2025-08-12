@@ -1,174 +1,132 @@
 import requests
-from bs4 import BeautifulSoup
 import json
-import os
-USERNAME = "SEL28AA8"
-PASSWORD = "Bkdfasdv@203414"
-def save_request_response(name, req, resp, cookies):
-    os.makedirs("debug", exist_ok=True)
+import re
+import xml.etree.ElementTree as ET
+# ===== Load LOG_PARENT_JSESSIONID & ENC từ sessionlog.json =====
+with open("session_log.json", "r", encoding="utf-8") as f:
+    session_data = json.load(f)
 
-    # Lưu request
-    with open(f"debug/{name}.req.txt", "w", encoding="utf-8") as f:
-        f.write(f"URL: {req.url}\n")
-        f.write(f"Method: {req.method}\n")
-        f.write("Headers:\n")
-        for k, v in req.headers.items():
-            f.write(f"  {k}: {v}\n")
-        if req.body:
-            f.write("\nBody:\n")
-            if isinstance(req.body, bytes):
-                f.write(req.body.decode(errors="ignore"))
-            else:
-                f.write(str(req.body))
+LOG_PARENT_JSESSIONID = session_data.get("ID")
+ENC_PARENT = session_data.get("EncryptionKey")
 
-    # Lưu response
-    with open(f"debug/{name}.resp.txt", "w", encoding="utf-8") as f:
-        f.write(f"Status: {resp.status_code}\n")
-        f.write("Headers:\n")
-        for k, v in resp.headers.items():
-            f.write(f"  {k}: {v}\n")
-        f.write("\nBody:\n")
-        f.write(resp.text)
+# ===== Load cookie =====
+with open("cookie1a.json", "r", encoding="utf-8") as f:
+    cookies_raw = json.load(f)
+if isinstance(cookies_raw, list):
+    cookies = {c["name"]: c["value"] for c in cookies_raw}
+else:
+    cookies = cookies_raw
+url = "https://tc345.resdesktop.altea.amadeus.com/app_ard/apf/do/home.taskmgr/UMCreateSessionKey;jsessionid=" + LOG_PARENT_JSESSIONID
 
-    # Lưu cookie
-    with open(f"debug/{name}.cookies.json", "w", encoding="utf-8") as f:
-        json.dump(cookies, f, ensure_ascii=False, indent=4)
-
-
-# ----------------- STEP 1 -----------------
-url1 = "https://www.accounts.amadeus.com/LoginService/authorizeAngular?service=ARD_VN_DC"
-session = requests.Session()
-
-resp1 = session.get(url1, headers={
-    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-    "accept-language": "vi-VN,vi;q=0.9",
-    "priority": "u=0, i",
-    "sec-ch-ua": "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"138\", \"Google Chrome\";v=\"138\"",
+headers = {
+    "accept": "*/*",
+    "accept-language": "en-US,en;q=0.9",
+    "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+    "priority": "u=1, i",
+    "sec-ch-ua": '"Chromium";v="139", "Not;A=Brand";v="99"',
     "sec-ch-ua-mobile": "?0",
-    "sec-ch-ua-platform": "\"Windows\"",
-    "sec-fetch-dest": "document",
-    "sec-fetch-mode": "navigate",
-    "sec-fetch-site": "none",
-    "sec-fetch-user": "?1",
-    "upgrade-insecure-requests": "1",
-    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"
-})
-
-save_request_response("step1", resp1.request, resp1, session.cookies.get_dict())
-
-# Parse LID
-soup = BeautifulSoup(resp1.text, "html.parser")
-lid_tag = soup.find("meta", attrs={"lid": True})
-lid_value = lid_tag["lid"] if lid_tag else None
-clp_tag = soup.find("meta", attrs={"clp-version": True})
-clp_value = clp_tag["clp-version"] if clp_tag else None
-if not lid_value:
-    raise Exception("Không tìm thấy LID trong HTML step1")
-print("[*] LID:", lid_value)
-print("[*] CLP:", clp_value)
-
-# ----------------- STEP 2 -----------------
-url2 = "https://www.accounts.amadeus.com/LoginService/ng/localization/locale_en_GB.json?v="+clp_value+"&origin=https://www.accounts.amadeus.com"
-headers2 = {
-    "accept": "application/json, text/plain, */*",
-    "accept-language": "vi-VN,vi;q=0.9",
-    "lid": lid_value,
-    "referer": url1,
-    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"
+    "sec-ch-ua-platform": '"Windows"',
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-origin",
+    "x-requested-with": "XMLHttpRequest",
+    "referer": "https://tc345.resdesktop.altea.amadeus.com/app_ard/apf/init/login?SITE=AVNPAIDL&LANGUAGE=GB&MARKETS=ARDW_PROD_WBP&ACTION=clpLogin",
 }
-resp2 = session.get(url2, headers=headers2)
 
-save_request_response("step2", resp2.request, resp2, session.cookies.get_dict())
-
-print("[*] Done, đã lưu request/response + cookies vào thư mục debug/")
-
-# ----------------- STEP 3 -----------------
-url3 = "https://www.accounts.amadeus.com/LoginService/services/rs/auth2.0/init?service=ARD_VN_DC"
-
-headers3 = {
-    "accept": "application/json, text/plain, */*",
-    "accept-language": "vi-VN,vi;q=0.9",
-    "lid": lid_value,
-    "referer": url1,
-    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"
+data = {
+    "flowExKey": "e14s1",
+    "initialAction": "newCrypticSession",
+    "recordLocator": "[object PointerEvent]",
+    "ctiAcknowledge": "false",
+    "LOG_PARENT_JSESSIONID": LOG_PARENT_JSESSIONID,
+    "waiAria": "false",
+    "SITE": "AVNPAIDL",
+    "LANGUAGE": "GB",
+    "aria.target": "body",
+    "aria.panelId": "3"
 }
-resp3 = session.post(url3, headers=headers3)
 
-save_request_response("step3", resp3.request, resp3, session.cookies.get_dict())
+session = requests.Session()
+session.cookies.update(cookies)
 
-print("[*] Done, đã lưu request/response + cookies vào thư mục debug/")
-# ----------------- STEP 4 -----------------
+resp = session.post(url, headers=headers, data=data)
 
-url4 = "https://www.accounts.amadeus.com/LoginService/ng/localization/locale_de_DE.json?v="+clp_value+"&origin=https://www.accounts.amadeus.com"
+print("Status code:", resp.status_code)
 
-headers4 = {
-    "accept": "application/json, text/plain, */*",
-    "accept-language": "vi-VN,vi;q=0.9",
-    "lid": lid_value,
-    "referer": url1,
-    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"
+with open("createNewSession.txt", "w", encoding="utf-8") as f:
+    f.write(resp.text)
+match = re.search(r'<!\[CDATA\[(.*?)\]\]>', resp.text, re.S)
+if match:
+    json_text = match.group(1).strip()
+
+    # Lọc bỏ khoảng trắng, xuống dòng thừa
+    json_text = json_text.strip()
+
+    # Trường hợp bên trong có nhiều dòng rác, chỉ lấy dòng có "ENC":
+    enc_match = re.search(r'\"ENC\":\"([A-F0-9]+)\"', json_text)
+    if enc_match:
+        ENC = enc_match.group(1)
+        print("ENC =", ENC[:-9])
+    else:
+        print("Không tìm thấy ENC")
+else:
+    print("Không tìm thấy CDATA")
+url = "https://tc345.resdesktop.altea.amadeus.com/app_ard/apf/do/loginNewSession.UM/login"
+
+# Headers
+headers = {
+    "accept": "*/*",
+    "accept-language": "en-US,en;q=0.9",
+    "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+    "priority": "u=1, i",
+    "sec-ch-ua": '"Chromium";v="139", "Not;A=Brand";v="99"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-origin",
+    "x-requested-with": "XMLHttpRequest",
+    "referer": "https://tc345.resdesktop.altea.amadeus.com/app_ard/apf/init/login?SITE=AVNPAIDL&LANGUAGE=GB&MARKETS=ARDW_PROD_WBP&ACTION=clpLogin"
 }
-resp4 = session.get(url4, headers=headers4)
 
-save_request_response("step4", resp4.request, resp4, session.cookies.get_dict())
-
-print("[*] Done, đã lưu request/response + cookies vào thư mục debug/")
-# ----------------- STEP 5 -----------------
-
-url5 = "https://www.accounts.amadeus.com/LoginService/services/rs/auth2.0/identify?service=ARD_VN_DC"
-
-headers5 = {
-    "accept": "application/json, text/plain, */*",
-    "accept-language": "vi-VN,vi;q=0.9",
-    "lid": lid_value,
-    "referer": url1,
-    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"
-}
+# Payload dạng dict cho dễ thay đổi
 payload = {
-    "officeId":"",
-    "userAlias":USERNAME,
-    "userId":"",
-    "email":"",
-    "organization":"",
-    "agentSign":"",
-    "dutyCode":"",
-    "authMode":"HOS",
-    "language":"en_GB",
-    "shouldSelectOffice":"false"
+    "LANGUAGE": "GB",
+    "SITE": "AVNPAIDL",
+    "MARKETS": "ARDW_PROD_WBP",
+    "initialAction": "newCrypticSession",
+    "waiAria": "false",
+    "LOG_PARENT_JSESSIONID": LOG_PARENT_JSESSIONID,
+    "recordLocator": "[object PointerEvent]",
+    "ctiAcknowledge": "false",
+    "aria.target": "body.main.s2",
+    "aria.sprefix": "s2",
+    "ENC": ENC,
+    "ENCT": "1",
+    "aria.panelId": "6"
 }
-resp5 = session.post(url5, headers=headers5,json= payload)
 
-save_request_response("step5", resp5.request, resp5, session.cookies.get_dict())
+# Nếu cần cookie phiên thì bỏ vô đây
 
-print("[*] Done, đã lưu request/response + cookies vào thư mục debug/")
-# ----------------- STEP 6 -----------------
 
-url6 = "https://www.accounts.amadeus.com/LoginService/services/rs/auth2.0/authenticate?service=ARD_VN_DC"
-with open("debug/step5.cookies.json", "r", encoding="utf-8") as f:
-    cookies = json.load(f)
+# Gửi request
+response = session.post(url, headers=headers, data=payload)
 
-token = cookies.get("accessToken_ARD_VN_DC")
-print(token)
-headers6 = {
-    "accept": "application/json, text/plain, */*",
-    "accept-language": "vi-VN,vi;q=0.9",
-    "lid": lid_value,
-    "referer": url1,
-    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"
-}
-payload = {
-           "accessToken":token,
-           "authMode":"HOS",
-           "authenticationFactors":{
-               "password":PASSWORD
-               },
-           "officeId":"",
-           "organization":"",
-           "forceSignIn":"false",
-           "redirectUri":"null",
-           "language":"de_DE"}
-resp6 = session.post(url6, headers=headers6,json= payload)
+print(response.status_code)
+with open("createNewSessionLogin.txt", "w", encoding="utf-8") as f:
+    f.write(response.text)
+pattern = re.compile(
+    r'<templates-init[^>]*moduleId="cryptic"[^>]*><!\[CDATA\[(.*?)\]\]></templates-init>',
+    re.DOTALL
+)
 
-save_request_response("step6", resp6.request, resp6, session.cookies.get_dict())
+match = pattern.search(response.text)
+if match:
+    cdata_content = match.group(1)
+    json_data = json.loads(cdata_content)
+    with open("crypticjsession.json", "w", encoding="utf-8") as f:
+                json.dump(json_data, f, indent=2, ensure_ascii=False)
 
-print("[*] Done, đã lưu request/response + cookies vào thư mục debug/")
+    print("CDATA content:\n", cdata_content)
+else:
+    print("Không tìm thấy CDATA cho moduleId=cryptic")
