@@ -1,107 +1,105 @@
-from playwright.sync_api import sync_playwright
-import re
-import json
-import xml.etree.ElementTree as ET
+from playwright.sync_api import sync_playwright, TimeoutError
+import re, json, xml.etree.ElementTree as ET
+import threading, time
+from queue import Queue
 
 USERNAME = "SEL28AA8"
 PASSWORD = "Bkdfasdv@203414"
 
+unlock_queue = Queue()
+
+def unlock_worker():
+    """Thread phụ — chỉ gửi tín hiệu check unlock"""
+    while True:
+        unlock_queue.put("check_unlock")
+        time.sleep(5)  # Mỗi 5s check 1 lần
+
 def getIDvsENC(xml_data):
     try:
         root = ET.fromstring(xml_data)
-        # Lấy CDATA trong <framework>
         framework_json_str = root.find("framework").text.strip()
         framework_data = json.loads(framework_json_str)
         session_id = framework_data["session"]["id"]
 
-        # Lấy CDATA trong <data>
         data_json_str = root.find("data").text.strip()
         data_data = json.loads(data_json_str)
         encryption_key = data_data["model"]["output"]["encryptionKey"]
 
-        return {
-            "ID": session_id,
-            "EncryptionKey": encryption_key
-        }
+        return {"ID": session_id, "EncryptionKey": encryption_key}
     except:
         return None
 
-def extract_jsessionid(url):
-    match = re.search(r';jsessionid=([^?]+)', url, re.IGNORECASE)
-    return match.group(1) if match else None
+def login(p, username=USERNAME, password=PASSWORD):
+    browser = p.chromium.launch(headless=False)
+    page = browser.new_page()
 
+    def is_target_response(res):
+        return "createSessionKey" in res.url and ";jsessionid=" in res.url.lower()
 
-def login(username=USERNAME, password=PASSWORD):
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
-        page = browser.new_page()
+    page.goto("https://tc345.resdesktop.altea.amadeus.com/app_ard/apf/init/login?SITE=AVNPAIDL&LANGUAGE=GB&MARKETS=ARDW_PROD_WBP&ACTION=clpLogin")
 
-        print("[*] Đang chờ request có jsessionid...")
+    page.wait_for_selector("#userAliasInput")
+    page.fill("#userAliasInput", username)
+    page.click('button[type="submit"]')
 
-        # Bắt event response cho đúng request
-        def is_target_response(res):
-            return "createSessionKey" in res.url and ";jsessionid=" in res.url.lower()
+    page.wait_for_selector("#passwordInput")
+    page.fill("#passwordInput", password)
+    page.click('button[type="submit"]')
 
-        # Mở trang login
-        page.goto("https://tc345.resdesktop.altea.amadeus.com/app_ard/apf/init/login?SITE=AVNPAIDL&LANGUAGE=GB&MARKETS=ARDW_PROD_WBP&ACTION=clpLogin")
+    try:
+        page.wait_for_selector('#privateDataDiscOkButton', timeout=5000)
+        page.click('#privateDataDiscOkButton')
+    except:
+        pass
 
-        # Nhập username
-        page.wait_for_selector("#userAliasInput")
-        page.fill("#userAliasInput", username)
-        page.click('button[type="submit"]')
+    try:
+        res = page.wait_for_event("response", timeout=60000, predicate=is_target_response)
+        body = res.text()
+    except:
+        print("[❌] Không bắt được createSessionKey")
+        return None, browser
 
-        # Nhập password
-        page.wait_for_selector("#passwordInput")
-        page.fill("#passwordInput", password)
-        page.click('button[type="submit"]')
+    jsession_data = getIDvsENC(body)
+    if jsession_data:
+        with open("session_log.json", "w", encoding="utf-8") as f:
+            json.dump(jsession_data, f, indent=2, ensure_ascii=False)
 
-        # Accept popup nếu có
-        try:
-            page.wait_for_selector('#privateDataDiscOkButton', timeout=5000)
-            page.click('#privateDataDiscOkButton')
-        except:
-            pass
+        cookies = page.context.cookies()
+        with open("cookie1a.json", "w", encoding="utf-8") as f:
+            json.dump(cookies, f, indent=2, ensure_ascii=False)
 
-        # Chờ response đúng điều kiện
-        try:
-            res = page.wait_for_event("response", timeout=60000, predicate=is_target_response)
-        except:
-            print("[❌] Không bắt được createSessionKey trong 60s")
-            browser.close()
-            return None
-
-        # Lấy dữ liệu
-        try:
-            body = res.json()
-        except:
-            try:
-                body = res.text()
-            except:
-                body = "<Không đọc được body>"
-
-        jsession_data = getIDvsENC(body)
-        if jsession_data:
-            # Lưu session_log.json
-            with open("session_log.json", "w", encoding="utf-8") as f:
-                json.dump(jsession_data, f, indent=2, ensure_ascii=False)
-
-            # Lưu cookies
-            cookies = page.context.cookies()
-            with open("cookie1a.json", "w", encoding="utf-8") as f:
-                json.dump(cookies, f, indent=2, ensure_ascii=False)
-
-            #print("[✅] Login thành công:", jsession_data)
-            
-            return {"status": "OK", "session": jsession_data}
-        else:
-            print("[❌] Không lấy được ID/EncryptionKey")
-            
-            return None
-
+        print("[✅] Login thành công:", jsession_data)
+        return {"status": "OK", "session": jsession_data, "page": page, "browser": browser}, browser
+    else:
+        return None, browser
 
 if __name__ == "__main__":
-    result = login()
-    if result:
-        print(result)
-    else:
-        print("Login lỗi")
+    with sync_playwright() as p:
+        result, browser = login(p)
+        if result:
+            page = result["page"]
+
+            # Start thread gửi tín hiệu check unlock
+            threading.Thread(target=unlock_worker, daemon=True).start()
+
+            print("[*] Giữ browser sống, auto unlock đang chạy...")
+            try:
+                while True:
+                    if not unlock_queue.empty():
+                        msg = unlock_queue.get()
+                        if msg == "check_unlock":
+                            try:
+                                page.wait_for_selector(
+                                    "#eusermanagement_logout_lock_PASSWORD_id_input",
+                                    state="visible",
+                                    timeout=2000
+                                )
+                                print("[⚠] Phát hiện khóa — đang nhập password...")
+                                page.fill("#eusermanagement_logout_lock_PASSWORD_id_input", PASSWORD)
+                                page.click("#eusermanagement_logout_lock_save_id")
+                                print("[✅] Đã unlock!")
+                            except TimeoutError:
+                                print("keep ss alive")
+            except KeyboardInterrupt:
+                print("\n[!] Đóng browser")
+        browser.close()
