@@ -63,7 +63,7 @@ def createNewSession(
             return {"status": "ERROR", "message": "Không tìm thấy ENC trong CDATA"}
         ENC = enc_match.group(1) # cắt 9 ký tự cuối như code cũ
         
-        print(ENC)
+        #print(ENC)
         # ===== Login new session =====
         url_login = "https://tc345.resdesktop.altea.amadeus.com/app_ard/apf/do/loginNewSession.UM/login"
         headers = {
@@ -114,6 +114,7 @@ def createNewSession(
             try:
                 cryptic_data = json.loads(cdata_content)
                 jSessionId = cryptic_data["model"]["jSessionId"]
+                officeId = cryptic_data["model"]["officeId"]
                 language = cryptic_data["model"]["language"]
                 defaultActivePluginType = cryptic_data["model"]["defaultActivePluginType"]
                 dcxid = cryptic_data["model"]["dcxid"]
@@ -123,6 +124,7 @@ def createNewSession(
                 result = {
                     "status": "OK",
                     "ENC": ENC,
+                    "officeId":officeId,
                     "jSessionId": jSessionId,
                     "language": language,
                     "defaultActivePluginType": defaultActivePluginType,
@@ -132,7 +134,7 @@ def createNewSession(
                     "organization": organization
 
                 }
-                print(cryptic_data)
+                #print(cryptic_data)
                 with open("crypticjsession.json", "w", encoding="utf-8") as f:
                     json.dump(result, f, indent=2, ensure_ascii=False)
                 
@@ -144,47 +146,7 @@ def createNewSession(
 
     except Exception as e:
         return {"status": "ERROR", "message": str(e)}
-def unlock():
-    
-    with open("session_log.json", "r", encoding="utf-8") as f:
-            session_data = json.load(f)
 
-    jsessionid = session_data.get("ID")
-    url = "https://tc345.resdesktop.altea.amadeus.com/app_ard/apf/do/home.usermanagement_logout/unlockSession;jsessionid="+jsessionid
-    print(url)
-    headers = {
-        "accept": "*/*",
-        "accept-language": "en-US,en;q=0.9",
-        "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "priority": "u=1, i",
-        "sec-ch-ua": "\"Chromium\";v=\"139\", \"Not;A=Brand\";v=\"99\"",
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": "\"Windows\"",
-        "sec-fetch-dest": "empty",
-        "sec-fetch-mode": "cors",
-        "sec-fetch-site": "same-origin",
-        "x-requested-with": "XMLHttpRequest",
-        "referer": "https://tc345.resdesktop.altea.amadeus.com/app_ard/apf/init/login?SITE=AVNPAIDL&LANGUAGE=GB&MARKETS=ARDW_PROD_WBP&ACTION=clpLogin",
-    }
-
-    data = {
-        "flowExKey": "e3s2",
-        "PAGE_TICKET": "",
-        "USER_ID": USERNAME,
-        "PASSWORD": PASSWORD,
-        "IS_MAIN_SESSION": "true",
-        "SITE": "AVNPAIDL",
-        "LANGUAGE": "GB",
-        "aria.target": "body",
-        "aria.panelId": "83"
-    }
-
-    session = requests.Session()
-
-    response = session.post(url, headers=headers, data=data)
-
-    print(response.status_code)
-    print(response.text)
 
 if __name__ == "__main__":
     result = createNewSession()
