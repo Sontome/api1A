@@ -3,6 +3,7 @@ import random
 import string
 import json
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from createNewSession import createNewSession
 
 # Lưu session vào dict: {jsession_id: {"cryptic": "...", "created_at": ...}}
@@ -119,11 +120,98 @@ def send_command(command_str: str,ssid=None):
     data = {"data": json.dumps(payload, separators=(",", ":"))}
 
     resp = session.post(url, headers=headers, data=data)
-    return resp
+    return [ssid,resp]
 
 # ví dụ gọi thử
-if __name__ == "__main__":
+def process_row(row, code):
+    results = []
+    ssid, res = send_command(code)  # lấy session mới cho row này
+
+    for seg in row:
+        print(f"👉 [Thread] Đang check {seg}")
+        ssid, res = send_command(seg, ssid)
+        print("KQ seg:", res.text[:20])
+
+        ssid, res = send_command("fxr/ky/rvfr,u", ssid)
+        giachuyenbay = json.loads(res.text)
+        giachuyenbay = giachuyenbay["model"]["output"]["crypticResponse"]["response"]
+
+        print("KQ fxr:", giachuyenbay[:200])
+
+        results.append({
+            "combo": seg,
+            "giachuyenbay": giachuyenbay
+        })
+
+        # cancel 2 segment để reset PNR
+        ssid, res = send_command("XE1,2", ssid)
+        print("KQ XE:", res.text[:20])
+
+    return results
+
+def checkve1A(code):
+    start_time = time.time() 
+    ssid, res = send_command(code)
+    data = json.loads(res.text)
+
+    segments = data["model"]["output"]["speedmode"]["structuredResponse"]["availabilityResponse"]
+    all_segments = []
+    for segment in segments:
+        j_list = []
+        for group in segment["core"]:
+            for leg in group:
+                for line in leg["line"]:
+                    display = line["display"]
+
+                    # bỏ chuyến có KE
+                    if any(item.get("v") == "KE" and item.get("c") == 2 for item in display):
+                        continue
+
+                    # lấy số thứ tự
+                    stt = next(
+                        (item["v"].strip() for item in display if item.get("c") == 1 and item.get("v").strip()),
+                        None
+                    )
+
+                    # check có hạng J
+                    if stt and any(item.get("v", "").startswith("J") for item in display):
+                        j_list.append(f"J{stt}")
+        all_segments.append(j_list)
+
+    combos = []
+    if len(all_segments) >= 2:
+        chieu_di = all_segments[0]
+        chieu_ve = all_segments[1]
+        for d in chieu_di:
+            row = []
+            for v in chieu_ve:
+                row.append(f"SS1{d}*{v}")
+            combos.append(row)
+
+    print("Tổ hợp:", combos)
+
+    all_results = []
+
+    # row[0] chạy tuần tự với ssid ban đầu
+    if combos:
+        first_row = combos[0]
+        all_results.extend(process_row(first_row, code))
+
+    # row[1:] chạy đa luồng
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = [executor.submit(process_row, row, code) for row in combos[1:]]
+        for f in as_completed(futures):
+            try:
+                all_results.extend(f.result())
+            except Exception as e:
+                print("Lỗi thread:", e)
+
+    # lưu file JSON
+    with open("ketqua.json", "w", encoding="utf-8") as f:
+        json.dump(all_results, f, ensure_ascii=False, indent=2)
+    end_time = time.time()
+    print(f"⏱️ Tổng thời gian chạy: {end_time - start_time:.2f} giây")
+    return combos
+
+checkve1A("ANVN19AUGICNHAN*22AUG")
     
-    r = send_command("AN25JULICNHAN","test0")
-    print(r.status_code)
-    print(r.text)
