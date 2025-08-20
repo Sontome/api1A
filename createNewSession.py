@@ -2,6 +2,8 @@ import requests
 import json
 import re
 import xml.etree.ElementTree as ET
+import subprocess
+file_path = "login1A.py"
 USERNAME = "SEL28AA8"
 PASSWORD = "Bkdfasdv@203414"
 def createNewSession(
@@ -50,8 +52,10 @@ def createNewSession(
 
         resp = session.post(url_create, headers=headers, data=data)
         if resp.status_code != 200:
+            print(resp.status_code)
             return {"status": "ERROR", "message": "Tạo session key thất bại", "code": resp.status_code}
-
+        #print(resp.text)
+        
         # ===== Lấy ENC mới =====
         match = re.search(r'<!\[CDATA\[(.*?)\]\]>', resp.text, re.S)
         if not match:
@@ -108,6 +112,14 @@ def createNewSession(
             re.DOTALL
         )
         match_cryptic = pattern.search(resp_login.text)
+        if match_cryptic==None:
+            print("🔐 Token hết hạn. Đại ca cần chạy lại `getcokivj.py` để làm mới token.")
+            try:
+                subprocess.run(["python", file_path])
+            except:
+                print ("lỗi khi reload cookie")
+            return None
+
         cryptic_data = None
         if match_cryptic:
             cdata_content = match_cryptic.group(1)

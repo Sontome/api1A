@@ -3,6 +3,7 @@ import re, json, xml.etree.ElementTree as ET
 import threading, time
 from queue import Queue
 
+
 USERNAME = "SEL28AA8"
 PASSWORD = "Bkdfasdv@203414"
 
@@ -30,7 +31,7 @@ def getIDvsENC(xml_data):
         return None
 
 def login(p, username=USERNAME, password=PASSWORD):
-    browser = p.chromium.launch(headless=False)
+    browser = p.chromium.launch(headless=True)
     page = browser.new_page()
 
     def is_target_response(res):
@@ -79,27 +80,5 @@ if __name__ == "__main__":
         if result:
             page = result["page"]
 
-            # Start thread gửi tín hiệu check unlock
-            threading.Thread(target=unlock_worker, daemon=True).start()
-
-            print("[*] Giữ browser sống, auto unlock đang chạy...")
-            try:
-                while True:
-                    if not unlock_queue.empty():
-                        msg = unlock_queue.get()
-                        if msg == "check_unlock":
-                            try:
-                                page.wait_for_selector(
-                                    "#eusermanagement_logout_lock_PASSWORD_id_input",
-                                    state="visible",
-                                    timeout=2000
-                                )
-                                print("[⚠] Phát hiện khóa — đang nhập password...")
-                                page.fill("#eusermanagement_logout_lock_PASSWORD_id_input", PASSWORD)
-                                page.click("#eusermanagement_logout_lock_save_id")
-                                print("[✅] Đã unlock!")
-                            except TimeoutError:
-                                print("keep ss alive")
-            except KeyboardInterrupt:
-                print("\n[!] Đóng browser")
+            
         browser.close()

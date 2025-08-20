@@ -188,8 +188,15 @@ def generate_jsession():
 def create_new_session(jsession_id=None):
     if jsession_id is None:
         jsession_id = generate_jsession()
+    a = createNewSession()
+    if a ==None:
+        SESSIONS[jsession_id] = {
+            "cryptic": createNewSession(),
+            "created_at": time.time()
+        }
+        return jsession_id
     SESSIONS[jsession_id] = {
-        "cryptic": createNewSession(),
+        "cryptic": a,
         "created_at": time.time()
     }
     return jsession_id
@@ -217,6 +224,7 @@ def loadJsession(jsession_id=None):
     session = get_session(jsession_id)
     if session is None:
         ssid = create_new_session(jsession_id)
+        #print(ssid)
         session = get_session(ssid)
         return [ssid, session]
     cleanup_sessions()
@@ -239,7 +247,9 @@ COOKIES = {c["name"]: c["value"] for c in cookies_raw} if isinstance(cookies_raw
 
 async def send_close(client: httpx.AsyncClient, ssid=None):
     ssid, cryp = loadJsession(ssid)
+    #print(ssid, cryp)
     jSessionId = cryp["jSessionId"]
+    
     url = urlclose + jSessionId +"dispatch=close&flowId=apftaskmgr"
 
     
@@ -249,6 +259,7 @@ async def send_close(client: httpx.AsyncClient, ssid=None):
     return ssid, resp
 async def send_command(client: httpx.AsyncClient, command_str: str, ssid=None):
     ssid, cryp = loadJsession(ssid)
+    #print(ssid, cryp)
     jSessionId = cryp["jSessionId"]
     contextId = cryp["dcxid"]
     userId = cryp["officeId"]
